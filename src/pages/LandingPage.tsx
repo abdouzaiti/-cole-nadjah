@@ -790,7 +790,7 @@ export default function LandingPage() {
                     {isAr ? "مرحباً،" : "Bonjour,"}
                   </h3>
                   <h2 className="text-xl font-bold text-navy mb-5">
-                    Zaiti
+                    Mohamed
                   </h2>
 
                   <div className="flex justify-between items-center mb-3">
