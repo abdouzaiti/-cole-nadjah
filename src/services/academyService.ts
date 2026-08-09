@@ -127,18 +127,35 @@ export const academyService = {
       
       if (updateError) throw updateError;
 
-      // 2. Update the role in the centralized profiles table
+      // 2. Update all subscription details in the centralized profiles table
+      const profileData = { 
+        role: request.role,
+        name: request.full_name,
+        email: request.email,
+        phone: request.phone,
+        parent_phone: request.parent_phone,
+        level_id: request.level_id,
+        year_id: request.year_id,
+        subject_name: request.subject_name,
+        module: request.subject_name,
+        status: 'APPROVED'
+      };
+
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ 
-          role: request.role,
-          name: request.full_name,
-          phone: request.phone
-        })
+        .update(profileData)
         .eq('id', requestId);
 
       if (profileError) {
-         console.error(`Error updating profile:`, profileError);
+         console.error(`Error updating profile by ID:`, profileError);
+      }
+
+      // Also ensure profile matched by email is updated if profile ID differs from request ID
+      if (request.email) {
+        await supabase
+          .from('profiles')
+          .update(profileData)
+          .eq('email', request.email);
       }
 
       // 3. Insert into legacy/role-specific tables

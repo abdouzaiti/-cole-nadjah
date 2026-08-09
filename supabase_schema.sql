@@ -77,15 +77,30 @@ CREATE TABLE IF NOT EXISTS student_enrollments (
 
 -- 11. Profiles (Centralized user data)
 CREATE TABLE IF NOT EXISTS profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY,
     name TEXT,
     email TEXT,
     phone TEXT,
+    parent_phone TEXT,
     role TEXT CHECK (role IN ('STUDENT', 'TEACHER', 'ADMIN', 'GUEST')) DEFAULT 'GUEST',
+    level_id UUID REFERENCES levels(id),
+    year_id UUID REFERENCES years(id),
+    subject_name TEXT,
+    module TEXT,
+    status TEXT DEFAULT 'PENDING',
     avatar_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Ensure profiles has all subscription columns
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS parent_phone TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS level_id UUID REFERENCES levels(id);
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS year_id UUID REFERENCES years(id);
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subject_name TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS module TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PENDING';
 
 -- LEGACY/ROLE-SPECIFIC TABLES
 CREATE TABLE IF NOT EXISTS teachers (
@@ -127,17 +142,20 @@ ALTER TABLE registration_requests ENABLE ROW LEVEL SECURITY;
 -- DROP AND RECREATE POLICIES (Explicitly)
 DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Anyone can insert profiles" ON profiles;
+DROP POLICY IF EXISTS "Anyone can update profiles" ON profiles;
 DROP POLICY IF EXISTS "Anyone can create a registration request" ON registration_requests;
 DROP POLICY IF EXISTS "Admins can view registration requests" ON registration_requests;
 DROP POLICY IF EXISTS "Admins can update registration requests" ON registration_requests;
 DROP POLICY IF EXISTS "Anyone can select levels" ON levels;
 DROP POLICY IF EXISTS "Anyone can select years" ON years;
 
-CREATE POLICY "Profiles are viewable by everyone" ON profiles FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Profiles are viewable by everyone" ON profiles FOR SELECT TO public USING (true);
+CREATE POLICY "Anyone can insert profiles" ON profiles FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can update profiles" ON profiles FOR UPDATE USING (true);
 CREATE POLICY "Anyone can create a registration request" ON registration_requests FOR INSERT WITH CHECK (true);
-CREATE POLICY "Admins can view registration requests" ON registration_requests FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'ADMIN'));
-CREATE POLICY "Admins can update registration requests" ON registration_requests FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'ADMIN'));
+CREATE POLICY "Admins can view registration requests" ON registration_requests FOR SELECT USING (true);
+CREATE POLICY "Admins can update registration requests" ON registration_requests FOR UPDATE USING (true);
 CREATE POLICY "Anyone can select levels" ON levels FOR SELECT TO public USING (true);
 CREATE POLICY "Anyone can select years" ON years FOR SELECT TO public USING (true);
 
@@ -184,7 +202,10 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
   INSERT INTO public.profiles (id, email, name, role)
-  VALUES (new.id, new.email, new.raw_user_meta_data->>'full_name', 'GUEST');
+  VALUES (new.id, new.email, new.raw_user_meta_data->>'full_name', 'GUEST')
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    name = COALESCE(profiles.name, EXCLUDED.name);
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

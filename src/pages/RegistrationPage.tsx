@@ -280,20 +280,24 @@ export default function RegistrationPage() {
       };
 
       const dbRole = role === 'student' ? 'STUDENT' : 'TEACHER';
+      const requestId = generateUUID();
+      const phoneVal = (data.phone as string) || null;
+      const parentPhoneVal = role === 'student' ? ((data.parentPhone as string) || null) : null;
+      const subjectNameVal = subjectVal || null;
 
       // 4. Save request details into 'registration_requests' table
       const { error: insertError } = await supabase
         .from('registration_requests')
         .insert({
-          id: generateUUID(),
+          id: requestId,
           full_name: usernameVal,
           email: emailVal,
-          phone: data.phone as string,
-          parent_phone: role === 'student' ? (data.parentPhone as string) : null,
+          phone: phoneVal,
+          parent_phone: parentPhoneVal,
           role: dbRole,
           level_id: mappedLevelUuid,
           year_id: dbYearId,
-          subject_name: subjectVal || null,
+          subject_name: subjectNameVal,
           status: 'PENDING'
         });
 
@@ -308,6 +312,29 @@ export default function RegistrationPage() {
           );
         }
         throw insertError;
+      }
+
+      // 5. Save all subscription details into 'profiles' table
+      const profileData = {
+        id: requestId,
+        name: usernameVal,
+        email: emailVal,
+        phone: phoneVal,
+        parent_phone: parentPhoneVal,
+        role: dbRole,
+        level_id: mappedLevelUuid,
+        year_id: dbYearId,
+        subject_name: subjectNameVal,
+        module: subjectNameVal,
+        status: 'PENDING'
+      };
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert(profileData, { onConflict: 'id' });
+
+      if (profileError) {
+        console.warn('Note: Profile upsert warning:', profileError.message);
       }
 
       setIsSuccess(true);
